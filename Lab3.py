@@ -7,6 +7,8 @@ import csv
 import pandas as pd
 from regipy.registry import RegistryHive
 import ctypes
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
 
 def is_admin():
     """Check if the script is running with administrative privileges."""
@@ -26,7 +28,7 @@ def run_as_admin():
         sys.exit(1)
 
 def install_packages():
-    required_packages = ["regipy", "pandas"]
+    required_packages = ["regipy", "pandas", "tqdm"]
     for package in required_packages:
         try:
             __import__(package)
@@ -48,15 +50,17 @@ def parse_registry_hive(file_path, output_dir=None):
             output_dir = os.path.dirname(os.path.abspath(__file__))
         csv_file_path = os.path.join(output_dir, os.path.basename(file_path) + ".csv")
         
+        rows = []
+        for subkey in tqdm(registry_hive.recurse_subkeys(), desc=f"Parsing {os.path.basename(file_path)}", unit="subkey"):
+            values = []
+            for value in subkey.values:
+                values.append(f"{value.name}: {value.value}")
+            rows.append([subkey.path, "; ".join(values)])
+        
         with open(csv_file_path, mode='w', newline='', encoding='utf-8') as csv_file:
             csv_writer = csv.writer(csv_file, delimiter=';', escapechar='\\', quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerow(["Subkey", "Values"])
-            
-            for subkey in registry_hive.recurse_subkeys():
-                values = []
-                for value in subkey.values:
-                    values.append(f"{value.name}: {value.value}")
-                csv_writer.writerow([subkey.path, "; ".join(values)])
+            csv_writer.writerows(rows)
         
         print(f"Successfully parsed {file_path} and saved to {csv_file_path}")
         
@@ -93,6 +97,9 @@ def main():
     else:
         output_dir = None
 
+    def process_hive(hive_path):
+        parse_registry_hive(hive_path, output_dir)
+
     if args.save_hives:
         with tempfile.TemporaryDirectory() as temp_dir:
             sam_file = os.path.join(temp_dir, "sam")
@@ -105,10 +112,10 @@ def main():
             save_registry_hive(r"HKLM\SOFTWARE", software_file)
             save_registry_hive(r"HKLM\SECURITY", security_file)
             
-            parse_registry_hive(sam_file, output_dir)
-            parse_registry_hive(system_file, output_dir)
-            parse_registry_hive(software_file, output_dir)
-            parse_registry_hive(security_file, output_dir)
+            hives = [sam_file, system_file, software_file, security_file]
+            
+            with ThreadPoolExecutor() as executor:
+                list(tqdm(executor.map(process_hive, hives), total=len(hives), desc="Processing hives"))
     else:
         if not args.sam_file or not args.system_file or not args.software_file or not args.security_file:
             print("All --sam-file, --system-file, --software-file, and --security-file arguments must be provided if not using --save-hives.")
@@ -123,10 +130,10 @@ def main():
         print(f"Using provided SOFTWARE file: {software_file}")
         print(f"Using provided SECURITY file: {security_file}")
         
-        parse_registry_hive(sam_file, output_dir)
-        parse_registry_hive(system_file, output_dir)
-        parse_registry_hive(software_file, output_dir)
-        parse_registry_hive(security_file, output_dir)
+        hives = [sam_file, system_file, software_file, security_file]
+        
+        with ThreadPoolExecutor() as executor:
+            list(tqdm(executor.map(process_hive, hives), total=len(hives), desc="Processing hives"))
 
 if __name__ == "__main__":
     main()

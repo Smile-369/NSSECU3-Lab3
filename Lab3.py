@@ -84,11 +84,12 @@ def main():
 
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Save registry hives or use provided files.")
-    parser.add_argument('--save-hives', action='store_true', help="Flag to save the SAM, SYSTEM, SOFTWARE, and SECURITY hives.")
+    parser.add_argument('--save-hives', action='store_true', help="Flag to save the SAM, SYSTEM, SOFTWARE, SECURITY, and DEFAULT hives.")
     parser.add_argument('--sam-file', type=str, help="Path to the SAM file.")
     parser.add_argument('--system-file', type=str, help="Path to the SYSTEM file.")
     parser.add_argument('--software-file', type=str, help="Path to the SOFTWARE file.")
     parser.add_argument('--security-file', type=str, help="Path to the SECURITY file.")
+    parser.add_argument('--default-file', type=str, help="Path to the DEFAULT file.")
     parser.add_argument('--output-dir', type=str, help="Directory where the CSV files will be saved.")
     args = parser.parse_args()
 
@@ -100,40 +101,65 @@ def main():
     def process_hive(hive_path):
         parse_registry_hive(hive_path, output_dir)
 
+    hives_to_process = []
+
     if args.save_hives:
         with tempfile.TemporaryDirectory() as temp_dir:
-            sam_file = os.path.join(temp_dir, "sam")
-            system_file = os.path.join(temp_dir, "system")
-            software_file = os.path.join(temp_dir, "software")
-            security_file = os.path.join(temp_dir, "security")
+            if args.sam_file:
+                sam_file = args.sam_file
+            else:
+                sam_file = os.path.join(temp_dir, "sam")
+                save_registry_hive(r"HKLM\SAM", sam_file)
+            hives_to_process.append(sam_file)
             
-            save_registry_hive(r"HKLM\SAM", sam_file)
-            save_registry_hive(r"HKLM\SYSTEM", system_file)
-            save_registry_hive(r"HKLM\SOFTWARE", software_file)
-            save_registry_hive(r"HKLM\SECURITY", security_file)
+            if args.system_file:
+                system_file = args.system_file
+            else:
+                system_file = os.path.join(temp_dir, "system")
+                save_registry_hive(r"HKLM\SYSTEM", system_file)
+            hives_to_process.append(system_file)
             
-            hives = [sam_file, system_file, software_file, security_file]
+            if args.software_file:
+                software_file = args.software_file
+            else:
+                software_file = os.path.join(temp_dir, "software")
+                save_registry_hive(r"HKLM\SOFTWARE", software_file)
+            hives_to_process.append(software_file)
+            
+            if args.security_file:
+                security_file = args.security_file
+            else:
+                security_file = os.path.join(temp_dir, "security")
+                save_registry_hive(r"HKLM\SECURITY", security_file)
+            hives_to_process.append(security_file)
+            
+            if args.default_file:
+                default_file = args.default_file
+            else:
+                default_file = os.path.join(temp_dir, "default")
+                save_registry_hive(r"HKLM\DEFAULT", default_file)
+            hives_to_process.append(default_file)
             
             with ThreadPoolExecutor() as executor:
-                list(tqdm(executor.map(process_hive, hives), total=len(hives), desc="Processing hives"))
+                list(tqdm(executor.map(process_hive, hives_to_process), total=len(hives_to_process), desc="Processing hives"))
     else:
-        if not args.sam_file or not args.system_file or not args.software_file or not args.security_file:
-            print("All --sam-file, --system-file, --software-file, and --security-file arguments must be provided if not using --save-hives.")
-            return
-
-        sam_file = args.sam_file
-        system_file = args.system_file
-        software_file = args.software_file
-        security_file = args.security_file
-        print(f"Using provided SAM file: {sam_file}")
-        print(f"Using provided SYSTEM file: {system_file}")
-        print(f"Using provided SOFTWARE file: {software_file}")
-        print(f"Using provided SECURITY file: {security_file}")
+        if args.sam_file:
+            hives_to_process.append(args.sam_file)
+        if args.system_file:
+            hives_to_process.append(args.system_file)
+        if args.software_file:
+            hives_to_process.append(args.software_file)
+        if args.security_file:
+            hives_to_process.append(args.security_file)
+        if args.default_file:
+            hives_to_process.append(args.default_file)
         
-        hives = [sam_file, system_file, software_file, security_file]
+        if not hives_to_process:
+            print("No hive files provided to parse.")
+            return
         
         with ThreadPoolExecutor() as executor:
-            list(tqdm(executor.map(process_hive, hives), total=len(hives), desc="Processing hives"))
+            list(tqdm(executor.map(process_hive, hives_to_process), total=len(hives_to_process), desc="Processing hives"))
 
 if __name__ == "__main__":
     main()

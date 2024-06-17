@@ -28,7 +28,6 @@ def run_as_admin():
         sys.exit(1)
 
 def install_packages():
-    """Install required packages and libraries."""
     required_packages = ["regipy", "pandas", "tqdm"]
     for package in required_packages:
         try:
@@ -50,26 +49,26 @@ def parse_registry_hive(file_path, output_dir=None):
         if output_dir is None:
             output_dir = os.path.dirname(os.path.abspath(__file__))
         csv_file_path = os.path.join(output_dir, os.path.basename(file_path) + ".csv")
-
+        
         rows = []
         for subkey in tqdm(registry_hive.recurse_subkeys(), desc=f"Parsing {os.path.basename(file_path)}", unit="subkey"):
             values = []
             for value in subkey.values:
                 values.append(f"{value.name}: {value.value}")
             rows.append([subkey.path, "; ".join(values)])
-
+        
         with open(csv_file_path, mode='w', newline='', encoding='utf-8') as csv_file:
             csv_writer = csv.writer(csv_file, delimiter=';', escapechar='\\', quoting=csv.QUOTE_MINIMAL)
             csv_writer.writerow(["Subkey", "Values"])
             csv_writer.writerows(rows)
-
+        
         print(f"Successfully parsed {file_path} and saved to {csv_file_path}")
-
+        
         # Parse the CSV file with pandas and display the content
         df = pd.read_csv(csv_file_path, delimiter=';', escapechar='\\')
         print(f"Contents of {csv_file_path}:")
         print(df)
-
+        
     except Exception as e:
         print(f"Failed to parse registry hive {file_path}: {e}")
 
@@ -85,19 +84,19 @@ def main():
 
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Save registry hives or use provided files.")
-    parser.add_argument('--save', '--save-hives', action='store_true', help="Flag to save the SAM, SYSTEM, SOFTWARE, and SECURITY hives.")
-    parser.add_argument('--sam','--sam-file', type=str, help="Path to the SAM file.")
-    parser.add_argument('--sys','--system-file', type=str, help="Path to the SYSTEM file.")
-    parser.add_argument('--sw','--software-file', type=str, help="Path to the SOFTWARE file.")
-    parser.add_argument('--sec','--security-file', type=str, help="Path to the SECURITY file.")
-    parser.add_argument('-d','--default-file', type=str, help="Path to the DEFAULT file.")
-    parser.add_argument('-o','--output-dir', type=str, help="Directory where the CSV files will be saved.")
+    parser.add_argument('--save-hives', action='store_true', help="Flag to save the SAM, SYSTEM, SOFTWARE, SECURITY, and DEFAULT hives.")
+    parser.add_argument('--sam-file', type=str, help="Path to the SAM file.")
+    parser.add_argument('--system-file', type=str, help="Path to the SYSTEM file.")
+    parser.add_argument('--software-file', type=str, help="Path to the SOFTWARE file.")
+    parser.add_argument('--security-file', type=str, help="Path to the SECURITY file.")
+    parser.add_argument('--default-file', type=str, help="Path to the DEFAULT file.")
+    parser.add_argument('--output-dir', type=str, help="Directory where the CSV files will be saved.")
     args = parser.parse_args()
 
     if args.output_dir:
         output_dir = args.output_dir
     else:
-        output_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+        output_dir = None
 
     def process_hive(hive_path):
         parse_registry_hive(hive_path, output_dir)
@@ -112,35 +111,35 @@ def main():
                 sam_file = os.path.join(temp_dir, "sam")
                 save_registry_hive(r"HKLM\SAM", sam_file)
             hives_to_process.append(sam_file)
-
+            
             if args.system_file:
                 system_file = args.system_file
             else:
                 system_file = os.path.join(temp_dir, "system")
                 save_registry_hive(r"HKLM\SYSTEM", system_file)
             hives_to_process.append(system_file)
-
+            
             if args.software_file:
                 software_file = args.software_file
             else:
                 software_file = os.path.join(temp_dir, "software")
                 save_registry_hive(r"HKLM\SOFTWARE", software_file)
             hives_to_process.append(software_file)
-
+            
             if args.security_file:
                 security_file = args.security_file
             else:
                 security_file = os.path.join(temp_dir, "security")
                 save_registry_hive(r"HKLM\SECURITY", security_file)
             hives_to_process.append(security_file)
-
+            
             if args.default_file:
                 default_file = args.default_file
             else:
                 default_file = os.path.join(temp_dir, "default")
                 save_registry_hive(r"HKLM\DEFAULT", default_file)
             hives_to_process.append(default_file)
-
+            
             with ThreadPoolExecutor() as executor:
                 list(tqdm(executor.map(process_hive, hives_to_process), total=len(hives_to_process), desc="Processing hives"))
     else:
@@ -154,11 +153,11 @@ def main():
             hives_to_process.append(args.security_file)
         if args.default_file:
             hives_to_process.append(args.default_file)
-
+        
         if not hives_to_process:
             print("No hive files provided to parse.")
             return
-
+        
         with ThreadPoolExecutor() as executor:
             list(tqdm(executor.map(process_hive, hives_to_process), total=len(hives_to_process), desc="Processing hives"))
 
